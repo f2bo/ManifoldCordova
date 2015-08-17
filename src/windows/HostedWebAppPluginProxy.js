@@ -36,7 +36,13 @@ function configureHost(url, zOrder, display) {
 
 // handles webview's navigation starting event
 function navigationStartingEvent(evt) {
-    if (evt.uri && evt.uri !== "") {
+  if (handleCordovaExecCalls(evt)) {
+    evt.stopImmediatePropagation();
+    evt.preventDefault();
+    return;
+  }
+
+  if (evt.uri && evt.uri !== "") {
         var isInWhitelist = false;
         for (var i = 0; i < _whiteList.length; i++) {
             var rule = _whiteList[i];
@@ -180,6 +186,37 @@ function navigateBack(e) {
     }
 
     return true;
+}
+
+var exec = require('cordova/exec');
+
+function handleCordovaExecCalls(evt) {
+  if (evt.uri) {
+    var targetUri = new Windows.Foundation.Uri(evt.uri);
+    if (targetUri.host === '.cordova' && targetUri.path === '/exec') {
+      var service = targetUri.queryParsed.getFirstValueByName('service');
+      var action = targetUri.queryParsed.getFirstValueByName('action');
+      var args = JSON.parse(decodeURIComponent(targetUri.queryParsed.getFirstValueByName('args')));
+      var callbackId = targetUri.queryParsed.getFirstValueByName('callbackId');
+
+      function success(args) {
+        var params = encodeURIComponent(JSON.stringify(args));
+        var script = 'cordova.callbacks["' + callbackId + '"].success("' + params + '");';
+        _mainView.invokeScriptAsync('eval', script).start();
+      }
+
+      function fail(err) {
+        var params = encodeURIComponent(JSON.stringify(err));
+        var script = 'cordova.callbacks["' + callbackId + '"].fail("' + params + '");';
+        _mainView.invokeScriptAsync('eval', script).start();
+      }
+
+      exec(success, fail, service, action, args);
+      return true;
+    }
+  }
+
+  return false;
 }
 
 module.exports = {
